@@ -43,7 +43,7 @@ ENV/
 *~
 .DS_Store
 
-# Database Files
+# Database Files (SQLite - no longer used)
 *.db
 *.db-journal
 *.sqlite
@@ -54,6 +54,7 @@ traces.db
 .env
 .env.local
 .env.prod
+.env.dev
 .env.*.local
 *.pem
 *.key
@@ -61,6 +62,17 @@ secrets.yml
 credentials.json
 terraform.tfvars
 !terraform.tfvars.example
+backend.hcl
+!backend.hcl.example
+
+# Generated infrastructure config (contains account-specific info)
+infrastructure/backend_config.txt
+
+# Claude Code local settings
+.claude/
+
+# Personal development notes
+docs/
 
 # Terraform
 *.tfstate
@@ -89,7 +101,6 @@ temp/
 *.backup
 data/
 backups/
-oldreports/
 
 # Test outputs
 .tox/
