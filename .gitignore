@@ -72,7 +72,7 @@ infrastructure/backend_config.txt
 .claude/
 
 # Personal development notes
-docs/
+plan/
 
 # Terraform
 *.tfstate
