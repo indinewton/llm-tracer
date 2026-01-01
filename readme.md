@@ -8,7 +8,7 @@ Tired of paying $20-100+/month for LLM tracing platforms when you're just experi
 
 | Platform | Monthly Cost | What You Pay For |
 |----------|--------------|------------------|
-| LangSmith, Langfuse, etc. | $20-100+ | Seats, data retention, features |
+| Popular paid services, etc. | $20-100+ | Seats, data retention, features |
 | **LLM Tracer** | **~$2-5** | Only DynamoDB storage + Lambda invocations |
 
 Perfect for:
