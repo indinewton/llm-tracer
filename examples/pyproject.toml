@@ -1,0 +1,10 @@
+[project]
+name = "examples"
+version = "0.1.0"
+description = "Basic OpenRouter example with LLM Tracer"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "openai>=2.11.0",
+    "python-dotenv>=1.2.1",
+]

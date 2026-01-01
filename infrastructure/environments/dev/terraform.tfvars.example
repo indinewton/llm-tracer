@@ -1,0 +1,29 @@
+# AWS Configuration
+aws_region = "YOUR_AWS_REGION"
+
+# Project Configuration
+project_name = "llm-tracer"
+environment  = "dev"
+
+# DynamoDB Tables (optional - auto-generated with account_id if not specified)
+# Format: llm-tracer-{account_id}-dev-traces
+# traces_table_name = "my-custom-traces-table"
+# spans_table_name  = "my-custom-spans-table"
+
+# Lambda Role ARN (REQUIRED - from bootstrap output)
+lambda_role_arn = "arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/llm-tracer-YOUR_AWS_ACCOUNT_ID-lambda-role"
+
+# Lambda Configuration
+lambda_package_path    = "../../../service/dist/lambda.zip"
+lambda_memory_mb       = 256
+lambda_timeout_seconds = 30
+
+# API Keys (REQUIRED - comma-separated, format: project-{project_id})
+# Add more if you want, but the name should follow the format: project-{project_id}.
+api_keys = "project-dev,project-test"
+
+# Default project key (used when auth is disabled)
+# default_project_key = "project-public"
+
+# Alerts (optional)
+alert_emails = ["your_valid_email@example.com"]

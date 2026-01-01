@@ -120,3 +120,6 @@ docs/.doctrees/
 # OS specific
 .DS_Store
 Thumbs.db
+
+# AI code setups
+CLAUDE.md

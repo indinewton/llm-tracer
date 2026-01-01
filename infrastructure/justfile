@@ -1,0 +1,230 @@
+# LLM Tracer Infrastructure Justfile
+# Install just: https://github.com/casey/just#installation
+#   brew install just  (macOS)
+#   cargo install just (Rust)
+#   apt install just   (Debian/Ubuntu)
+#
+# Usage:
+#   just --list              # List all recipes
+#   just init-dev            # Initialize dev environment
+#   just init-prod           # Initialize prod environment
+#   just deploy-dev          # Deploy to dev
+#   just deploy-prod         # Deploy to prod
+
+# Default recipe - show help
+default:
+    @just --list
+
+# ============================================================
+# Bootstrap recipes (run once with admin credentials)
+# ============================================================
+
+# Initialize and apply bootstrap (creates S3 state bucket, IAM roles)
+bootstrap:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd bootstrap
+
+    if terraform output -json > /dev/null 2>&1 && [ "$(terraform output -json)" != "{}" ]; then
+        printf "Bootstrap output already exists. Do you want to re-run (terraform init + apply)? [yes/no]: "
+        read -r response
+        if [ "$response" = "yes" ]; then
+            terraform init && terraform apply
+        elif [ "$response" = "no" ]; then
+            terraform output
+            echo ""
+            echo "Please check resources on AWS console for names in the S3, DynamoDB, and IAM resource views."
+        else
+            echo "Error: Only 'yes' or 'no' are acceptable responses."
+            exit 1
+        fi
+    else
+        terraform init && terraform apply
+    fi
+
+# Show bootstrap outputs
+bootstrap-output:
+    cd bootstrap && terraform output
+
+# ============================================================
+# Backend configuration generation
+# ============================================================
+
+# Generate backend.hcl for dev environment from bootstrap outputs
+generate-backend-dev:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "Reading outputs from bootstrap..."
+    cd bootstrap
+
+    BUCKET=$(terraform output -raw s3_bucket_name)
+    REGION=$(terraform output -raw aws_region)
+    DYNAMODB_TABLE=$(terraform output -raw dynamodb_table_name)
+
+    cd ../environments/dev
+
+    cat > backend.hcl <<EOF
+    # Auto-generated from bootstrap terraform outputs
+    # Generated at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    bucket         = "${BUCKET}"
+    key            = "dev/terraform.tfstate"
+    region         = "${REGION}"
+    dynamodb_table = "${DYNAMODB_TABLE}"
+    encrypt        = true
+    EOF
+
+    echo "Created environments/dev/backend.hcl"
+
+# Generate backend.hcl for prod environment from bootstrap outputs
+generate-backend-prod:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "Reading outputs from bootstrap..."
+    cd bootstrap
+
+    BUCKET=$(terraform output -raw s3_bucket_name)
+    REGION=$(terraform output -raw aws_region)
+    DYNAMODB_TABLE=$(terraform output -raw dynamodb_table_name)
+
+    cd ../environments/prod
+
+    cat > backend.hcl <<EOF
+    # Auto-generated from bootstrap terraform outputs
+    # Generated at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    bucket         = "${BUCKET}"
+    key            = "prod/terraform.tfstate"
+    region         = "${REGION}"
+    dynamodb_table = "${DYNAMODB_TABLE}"
+    encrypt        = true
+    EOF
+
+    echo "Created environments/prod/backend.hcl"
+
+# Generate backend.hcl for both environments
+generate-backend: generate-backend-dev generate-backend-prod
+
+# ============================================================
+# Dev environment recipes
+# ============================================================
+
+# Initialize dev environment (generates backend.hcl + terraform init)
+init-dev: generate-backend-dev
+    cd environments/dev && terraform init -backend-config=backend.hcl
+
+# Plan dev environment
+plan-dev:
+    cd environments/dev && terraform plan
+
+# Apply dev environment
+apply-dev:
+    cd environments/dev && terraform apply
+
+# Full deploy to dev (init + apply)
+deploy-dev: init-dev apply-dev
+
+# Show dev outputs
+output-dev:
+    cd environments/dev && terraform output
+
+# Destroy dev environment
+destroy-dev:
+    cd environments/dev && terraform destroy
+
+# ============================================================
+# Prod environment recipes
+# ============================================================
+
+# Initialize prod environment (generates backend.hcl + terraform init)
+init-prod: generate-backend-prod
+    cd environments/prod && terraform init -backend-config=backend.hcl
+
+# Plan prod environment
+plan-prod:
+    cd environments/prod && terraform plan
+
+# Apply prod environment
+apply-prod:
+    cd environments/prod && terraform apply
+
+# Full deploy to prod (init + apply)
+deploy-prod: init-prod apply-prod
+
+# Show prod outputs
+output-prod:
+    cd environments/prod && terraform output
+
+# Destroy prod environment (requires confirmation)
+destroy-prod:
+    @echo "WARNING: This will destroy the production environment!"
+    @read -p "Type 'yes' to confirm: " confirm && [ "$$confirm" = "yes" ] || exit 1
+    cd environments/prod && terraform destroy
+
+# ============================================================
+# Utility recipes
+# ============================================================
+
+# Create terraform.tfvars from example (dev)
+create-tfvars-dev:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd bootstrap
+    LAMBDA_ROLE_ARN=$(terraform output -raw lambda_role_arn)
+    cd ../environments/dev
+    if [ -f terraform.tfvars ]; then
+        echo "terraform.tfvars already exists, skipping..."
+    else
+        cp terraform.tfvars.example terraform.tfvars
+        # Replace placeholder with actual value
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s|arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/llm-tracer-YOUR_AWS_ACCOUNT_ID-lambda-role|${LAMBDA_ROLE_ARN}|g" terraform.tfvars
+        else
+            sed -i "s|arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/llm-tracer-YOUR_AWS_ACCOUNT_ID-lambda-role|${LAMBDA_ROLE_ARN}|g" terraform.tfvars
+        fi
+        echo "Created environments/dev/terraform.tfvars - please review and update alert_emails"
+    fi
+
+# Create terraform.tfvars from example (prod)
+create-tfvars-prod:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd bootstrap
+    LAMBDA_ROLE_ARN=$(terraform output -raw lambda_role_arn)
+    cd ../environments/prod
+    if [ -f terraform.tfvars ]; then
+        echo "terraform.tfvars already exists, skipping..."
+    else
+        cp terraform.tfvars.example terraform.tfvars
+        # Replace placeholder with actual value
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s|arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/llm-tracer-YOUR_AWS_ACCOUNT_ID-lambda-role|${LAMBDA_ROLE_ARN}|g" terraform.tfvars
+        else
+            sed -i "s|arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/llm-tracer-YOUR_AWS_ACCOUNT_ID-lambda-role|${LAMBDA_ROLE_ARN}|g" terraform.tfvars
+        fi
+        echo "Created environments/prod/terraform.tfvars - please review and update alert_emails"
+    fi
+
+# Build Lambda package
+build-lambda:
+    cd ../service && chmod +x scripts/build_lambda_package.sh && ./scripts/build_lambda_package.sh
+
+# Full setup for dev (bootstrap must be done first)
+setup-dev: build-lambda create-tfvars-dev init-dev
+    @echo ""
+    @echo "Dev environment initialized!"
+    @echo "Next steps:"
+    @echo "  1. Review environments/dev/terraform.tfvars"
+    @echo "  2. Run: just plan-dev"
+    @echo "  3. Run: just apply-dev"
+
+# Full setup for prod (bootstrap must be done first)
+setup-prod: build-lambda create-tfvars-prod init-prod
+    @echo ""
+    @echo "Prod environment initialized!"
+    @echo "Next steps:"
+    @echo "  1. Review environments/prod/terraform.tfvars"
+    @echo "  2. Run: just plan-prod"
+    @echo "  3. Run: just apply-prod"

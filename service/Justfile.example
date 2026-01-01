@@ -1,0 +1,276 @@
+# Default command - show help
+default:
+    @just --list --unsorted
+
+# ============================================================
+# DOCKER CONTAINER MANAGEMENT (docker-*)
+# ============================================================
+
+# Start all services (DynamoDB + API)
+docker-up:
+    docker-compose up -d --build
+    @echo "Waiting for services to be healthy..."
+    @sleep 5
+    @just local-create-tables
+    @echo "Services ready at http://localhost:8001"
+
+# Stop all services
+docker-down:
+    docker-compose down
+    @echo "Services stopped."
+
+# Restart all services
+docker-restart:
+    @just docker-down
+    @just docker-up
+
+# Check service status
+docker-status:
+    docker-compose ps
+
+# View API service logs (follow mode)
+docker-logs-api:
+    docker-compose logs -f service
+
+# View DynamoDB logs (follow mode)
+docker-logs-db:
+    docker-compose logs -f dynamodb
+
+# View all logs (follow mode)
+docker-logs:
+    docker-compose logs -f
+
+# Clean everything (containers, volumes, images)
+docker-clean:
+    docker-compose down -v
+    docker rmi llm-tracer:latest 2>/dev/null || true
+    @echo "Cleaned up containers, volumes, and images."
+
+# Rebuild without cache
+docker-rebuild:
+    docker-compose build --no-cache
+    @just docker-up
+
+# Shell into API container
+docker-shell-api:
+    docker-compose exec service /bin/bash
+
+# Shell into DynamoDB container
+docker-shell-db:
+    docker-compose exec dynamodb /bin/bash
+
+# ============================================================
+# LOCAL DYNAMODB MANAGEMENT (local-*)
+# Requires: DynamoDB container running on localhost:8000
+# ============================================================
+
+# Internal: Check if DynamoDB container is running
+[private]
+_check-local-db:
+    #!/usr/bin/env bash
+    if ! docker-compose ps dynamodb 2>/dev/null | grep -q "running\|Up"; then
+        echo "Error: DynamoDB container is not running."
+        echo "Start it with: just docker-up"
+        exit 1
+    fi
+
+# Create DynamoDB tables on local container
+local-create-tables: _check-local-db
+    docker-compose exec -T service python /app/scripts/create_dynamodb_tables.py --endpoint http://dynamodb:8000
+
+# List tables on local DynamoDB
+local-list-tables: _check-local-db
+    aws dynamodb list-tables \
+        --endpoint-url http://localhost:8000 \
+        --region eu-central-1
+
+# Scan traces table on local DynamoDB
+local-scan-traces: _check-local-db
+    aws dynamodb scan \
+        --table-name llm-tracer-dev-traces \
+        --endpoint-url http://localhost:8000 \
+        --region eu-central-1
+
+# Scan spans table on local DynamoDB
+local-scan-spans: _check-local-db
+    aws dynamodb scan \
+        --table-name llm-tracer-dev-spans \
+        --endpoint-url http://localhost:8000 \
+        --region eu-central-1
+
+# Delete and recreate tables (reset all data)
+local-reset-tables: _check-local-db
+    aws dynamodb delete-table --table-name llm-tracer-dev-traces --endpoint-url http://localhost:8000 --region eu-central-1 2>/dev/null || true
+    aws dynamodb delete-table --table-name llm-tracer-dev-spans --endpoint-url http://localhost:8000 --region eu-central-1 2>/dev/null || true
+    @sleep 2
+    @just local-create-tables
+    @echo "Tables reset."
+
+# Describe traces table schema
+local-describe-traces: _check-local-db
+    aws dynamodb describe-table \
+        --table-name llm-tracer-dev-traces \
+        --endpoint-url http://localhost:8000 \
+        --region eu-central-1 \
+        | python -m json.tool
+
+# Describe spans table schema
+local-describe-spans: _check-local-db
+    aws dynamodb describe-table \
+        --table-name llm-tracer-dev-spans \
+        --endpoint-url http://localhost:8000 \
+        --region eu-central-1 \
+        | python -m json.tool
+
+# Count items in both tables
+local-count: _check-local-db
+    #!/usr/bin/env bash
+    echo "Traces:"
+    aws dynamodb scan --table-name llm-tracer-dev-traces --endpoint-url http://localhost:8000 --region eu-central-1 --select COUNT | jq '.Count'
+    echo "Spans:"
+    aws dynamodb scan --table-name llm-tracer-dev-spans --endpoint-url http://localhost:8000 --region eu-central-1 --select COUNT | jq '.Count'
+
+# ============================================================
+# AWS DYNAMODB MANAGEMENT (aws-*)
+# Requires: Valid AWS credentials configured
+# ============================================================
+
+# Set default table names (override with: just aws-list-tables table_prefix=prod)
+aws_region := "eu-central-1"
+traces_table := "llm-tracer-dev-traces"
+spans_table := "llm-tracer-dev-spans"
+
+# List tables on AWS DynamoDB
+aws-list-tables:
+    aws dynamodb list-tables --region {{aws_region}}
+
+# Scan traces table on AWS (limit 10)
+aws-scan-traces limit="10":
+    aws dynamodb scan \
+        --table-name {{traces_table}} \
+        --region {{aws_region}} \
+        --max-items {{limit}} \
+        | python -m json.tool
+
+# Scan spans table on AWS (limit 10)
+aws-scan-spans limit="10":
+    aws dynamodb scan \
+        --table-name {{spans_table}} \
+        --region {{aws_region}} \
+        --max-items {{limit}} \
+        | python -m json.tool
+
+# Describe traces table on AWS
+aws-describe-traces:
+    aws dynamodb describe-table \
+        --table-name {{traces_table}} \
+        --region {{aws_region}} \
+        | python -m json.tool
+
+# Describe spans table on AWS
+aws-describe-spans:
+    aws dynamodb describe-table \
+        --table-name {{spans_table}} \
+        --region {{aws_region}} \
+        | python -m json.tool
+
+# Count items in AWS tables
+aws-count:
+    #!/usr/bin/env bash
+    echo "Traces ({{traces_table}}):"
+    aws dynamodb scan --table-name {{traces_table}} --region {{aws_region}} --select COUNT | jq '.Count'
+    echo "Spans ({{spans_table}}):"
+    aws dynamodb scan --table-name {{spans_table}} --region {{aws_region}} --select COUNT | jq '.Count'
+
+# Query traces by project_id (uses GSI)
+aws-query-project project_id:
+    aws dynamodb query \
+        --table-name {{traces_table}} \
+        --region {{aws_region}} \
+        --index-name project-time-index \
+        --key-condition-expression "project_id = :pid" \
+        --expression-attribute-values '{":pid": {"S": "{{project_id}}"}}' \
+        | python -m json.tool
+
+# ============================================================
+# API TESTING (api-*)
+# ============================================================
+
+api_url := "http://localhost:8001"
+api_key := "project-dev"
+
+# Health check
+api-health:
+    curl -s {{api_url}}/health | python -m json.tool
+
+# List all traces
+api-traces:
+    curl -s -H "X-API-Key: {{api_key}}" {{api_url}}/api/traces | python -m json.tool
+
+# Get stats
+api-stats:
+    curl -s -H "X-API-Key: {{api_key}}" {{api_url}}/api/stats | python -m json.tool
+
+# Create a test trace
+api-test-trace:
+    curl -s -X POST {{api_url}}/api/traces \
+        -H "Content-Type: application/json" \
+        -H "X-API-Key: {{api_key}}" \
+        -d '{"name": "test-trace", "project_id": "dev", "tags": ["test"]}' \
+        | python -m json.tool
+
+# Get a specific trace by ID
+api-get-trace trace_id:
+    curl -s -H "X-API-Key: {{api_key}}" {{api_url}}/api/traces/{{trace_id}} | python -m json.tool
+
+# Get spans for a trace
+api-get-spans trace_id:
+    curl -s -H "X-API-Key: {{api_key}}" {{api_url}}/api/traces/{{trace_id}}/spans | python -m json.tool
+
+# ============================================================
+# DEVELOPMENT (dev-*)
+# ============================================================
+
+# Run tests with coverage
+dev-test:
+    pytest tests/ -v --cov=src --cov-report=term-missing
+
+# Run tests matching pattern
+dev-test-match pattern:
+    pytest tests/ -v -k "{{pattern}}"
+
+# Run linter (if configured)
+dev-lint:
+    ruff check src/ tests/
+
+# Format code (if configured)
+dev-format:
+    ruff format src/ tests/
+
+# Build lambda package
+dev-build-lambda:
+    ./scripts/build_lambda_package.sh
+
+# Run local server without Docker (requires DynamoDB running)
+dev-serve:
+    cd src && uvicorn server:app --reload --port 8001
+
+# ============================================================
+# LAMBDA DEPLOYMENT (lambda-*)
+# ============================================================
+
+# Build and show package info
+lambda-build:
+    ./scripts/build_lambda_package.sh
+    @echo "\nPackage contents:"
+    @unzip -l dist/lambda.zip | tail -20
+    @echo "\nPackage size:"
+    @ls -lh dist/lambda.zip
+
+# Test lambda handler locally with SAM (if installed)
+lambda-local-invoke:
+    sam local invoke --template infrastructure/template.yaml
+
+# View lambda logs from AWS (last 5 minutes)
+lambda-logs function_name:
+    aws logs tail /aws/lambda/{{function_name}} --since 5m --follow

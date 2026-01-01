@@ -1,0 +1,94 @@
+# List available commands
+help:
+    @just --list
+
+# ==================
+# Docker Commands
+# ==================
+
+# Start all services (DynamoDB + API)
+up:
+    docker-compose up -d --build
+    @echo "Waiting for services to be healthy..."
+    @sleep 5
+    @just create-tables
+    @echo "Services ready at http://localhost:8001"
+
+# Stop all services
+down:
+    docker-compose down
+    @echo "Services stopped."
+
+# Restart all services
+restart:
+    @just down
+    @just up
+
+# View service logs
+logs:
+    docker-compose logs -f service
+
+# View DynamoDB logs
+logs-dynamodb:
+    docker-compose logs -f dynamodb
+
+# Check service status
+status:
+    docker-compose ps
+
+# Clean everything (containers, volumes, images)
+clean:
+    docker-compose down -v
+    docker rmi llm-tracer:latest 2>/dev/null || true
+    @echo "Cleaned up containers, volumes, and images."
+
+# ==================
+# DynamoDB Commands
+# ==================
+
+# Create DynamoDB tables
+create-tables:
+    docker-compose exec -T service python /app/scripts/create_dynamodb_tables.py --endpoint http://dynamodb:8000
+
+# List DynamoDB tables
+list-tables:
+    aws dynamodb list-tables --endpoint-url http://localhost:8000 --region eu-central-1
+
+# Scan traces table
+scan-traces:
+    aws dynamodb scan --table-name llm-tracer-dev-traces --endpoint-url http://localhost:8000 --region eu-central-1
+
+# Scan spans table
+scan-spans:
+    aws dynamodb scan --table-name llm-tracer-dev-spans --endpoint-url http://localhost:8000 --region eu-central-1
+
+# Delete and recreate tables (reset data)
+reset-tables:
+    aws dynamodb delete-table --table-name llm-tracer-dev-traces --endpoint-url http://localhost:8000 --region eu-central-1 2>/dev/null || true
+    aws dynamodb delete-table --table-name llm-tracer-dev-spans --endpoint-url http://localhost:8000 --region eu-central-1 2>/dev/null || true
+    @sleep 2
+    @just create-tables
+    @echo "Tables reset."
+
+# ==================
+# API Test Commands
+# ==================
+
+# Test health endpoint
+health:
+    curl -s http://localhost:8001/health | python -m json.tool
+
+# List all traces
+traces:
+    curl -s -H "X-API-Key: project-dev" http://localhost:8001/api/traces | python -m json.tool
+
+# Get stats
+stats:
+    curl -s -H "X-API-Key: project-dev" http://localhost:8001/api/stats | python -m json.tool
+
+# Create a test trace
+test-trace:
+    curl -s -X POST http://localhost:8001/api/traces \
+      -H "Content-Type: application/json" \
+      -H "X-API-Key: project-dev" \
+      -d '{"name": "test-trace", "project_id": "dev", "tags": ["test"]}' | python -m json.tool

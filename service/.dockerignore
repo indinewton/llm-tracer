@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Databases (don't copy local DB to image)
+*.db
+*.sqlite
+*.sqlite3
+traces.db
+
+# Environment files (don't copy secrets)
+.env
+.env.local
+.env.prod
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+README.md
+*.md
+docs/
+
+# Terraform
+terraform/
+*.tfstate
+*.tfstate.backup
+
+# Others
+node_modules/
