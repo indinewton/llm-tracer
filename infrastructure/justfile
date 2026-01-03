@@ -13,7 +13,34 @@
 
 # Default recipe - show help
 default:
-    @just --list
+    @just help
+
+# Show help for infrastructure deployment workflow
+help:
+    @echo "============================================================"
+    @echo "      LLM TRACER: INFRASTRUCTURE DEPLOYMENT GUIDE"
+    @echo "============================================================"
+    @echo "PREREQUISITE: Ensure AWS CLI is configured (run: aws configure)"
+    @echo ""
+    @echo "Option A: FIRST-TIME SETUP (From Scratch)"
+    @echo "------------------------------------------------------------"
+    @echo "1. just bootstrap          - Create S3 backend to track resources"
+    @echo "2. just create-tfvars-dev   - Set your local variables (API keys, etc)"
+    @echo "3. just build-lambda       - Package your code for AWS"
+    @echo "4. just deploy-dev         - Deploy everything to the cloud"
+    @echo "5. just output-dev         - Get your API URLs and Role ARNs"
+    @echo ""
+    @echo "Option B: QUICK UPDATE (For Code or Config changes)"
+    @echo "------------------------------------------------------------"
+    @echo "1. just setup-dev          - Re-build code & re-init workspace"
+    @echo "2. just apply-dev          - Push updates to cloud"
+    @echo ""
+    @echo "------------------------------------------------------------"
+    @echo "Note: For PROD, replace '-dev' with '-prod' in above commands."
+    @echo "Use 'just clean' if you need to wipe local state and start over."
+    @echo "Use 'just --list' to see all available recipes."
+    @echo "============================================================"
+
 
 # ============================================================
 # Bootstrap recipes (run once with admin credentials)
@@ -27,16 +54,22 @@ bootstrap:
 
     if terraform output -json > /dev/null 2>&1 && [ "$(terraform output -json)" != "{}" ]; then
         printf "Bootstrap output already exists. Do you want to re-run (terraform init + apply)? [yes/no]: "
-        read -r response
-        if [ "$response" = "yes" ]; then
-            terraform init && terraform apply
-        elif [ "$response" = "no" ]; then
+        if read -t 5 -r response; then
+            if [ "$response" = "yes" ]; then
+                terraform init && terraform apply
+            elif [ "$response" = "no" ]; then
+                terraform output
+                echo ""
+                echo "Please check resources on AWS console for names in the S3, DynamoDB, and IAM resource views."
+            else
+                echo "Error: Only 'yes' or 'no' are acceptable responses."
+                exit 1
+            fi
+        else
+            echo -e "\nNo response received within 5 seconds. Exiting..."
             terraform output
             echo ""
             echo "Please check resources on AWS console for names in the S3, DynamoDB, and IAM resource views."
-        else
-            echo "Error: Only 'yes' or 'no' are acceptable responses."
-            exit 1
         fi
     else
         terraform init && terraform apply
@@ -104,20 +137,13 @@ generate-backend-prod:
 
     echo "Created environments/prod/backend.hcl"
 
-# Generate backend.hcl for both environments
-generate-backend: generate-backend-dev generate-backend-prod
-
 # ============================================================
 # Dev environment recipes
 # ============================================================
 
-# Initialize dev environment (generates backend.hcl + terraform init)
+# Initialize dev environment (generates backend.hcl + terraform init); mainly to verify backend.hcl
 init-dev: generate-backend-dev
     cd environments/dev && terraform init -backend-config=backend.hcl
-
-# Plan dev environment
-plan-dev:
-    cd environments/dev && terraform plan
 
 # Apply dev environment
 apply-dev:
@@ -138,13 +164,9 @@ destroy-dev:
 # Prod environment recipes
 # ============================================================
 
-# Initialize prod environment (generates backend.hcl + terraform init)
+# Initialize prod environment (generates backend.hcl + terraform init); mainly to verify backend.hcl
 init-prod: generate-backend-prod
     cd environments/prod && terraform init -backend-config=backend.hcl
-
-# Plan prod environment
-plan-prod:
-    cd environments/prod && terraform plan
 
 # Apply prod environment
 apply-prod:
@@ -166,8 +188,13 @@ destroy-prod:
 # ============================================================
 # Utility recipes
 # ============================================================
+# Notes: 
+# 1. 'sed' command is used as stream editor that basically takes a pattern as 's|pattern|replacement|g' and applies it to the target file
+#     -i is used to edit the file in place; instead of returning anything to console.
+# 2. [[ "$$OSTYPE" == "darwin"* ]] is used to check if the OS is macOS (for sed command); else linux is assumed as default.
 
-# Create terraform.tfvars from example (dev)
+
+# Create terraform.tfvars from terraform.tfvars.example (dev) using 'sed' command
 create-tfvars-dev:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -178,16 +205,16 @@ create-tfvars-dev:
         echo "terraform.tfvars already exists, skipping..."
     else
         cp terraform.tfvars.example terraform.tfvars
-        # Replace placeholder with actual value
+        # Search and replace pattern inline at the target file
         if [[ "$OSTYPE" == "darwin"* ]]; then
             sed -i '' "s|arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/llm-tracer-YOUR_AWS_ACCOUNT_ID-lambda-role|${LAMBDA_ROLE_ARN}|g" terraform.tfvars
         else
             sed -i "s|arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/llm-tracer-YOUR_AWS_ACCOUNT_ID-lambda-role|${LAMBDA_ROLE_ARN}|g" terraform.tfvars
         fi
-        echo "Created environments/dev/terraform.tfvars - please review and update alert_emails"
+        echo "Created environments/dev/terraform.tfvars - please review and update api_keys and alert_emails"
     fi
 
-# Create terraform.tfvars from example (prod)
+# Create terraform.tfvars from terraform.tfvars.example (prod) using 'sed' command
 create-tfvars-prod:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -198,16 +225,16 @@ create-tfvars-prod:
         echo "terraform.tfvars already exists, skipping..."
     else
         cp terraform.tfvars.example terraform.tfvars
-        # Replace placeholder with actual value
+        # Search and replace pattern inline at the target file
         if [[ "$OSTYPE" == "darwin"* ]]; then
             sed -i '' "s|arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/llm-tracer-YOUR_AWS_ACCOUNT_ID-lambda-role|${LAMBDA_ROLE_ARN}|g" terraform.tfvars
         else
             sed -i "s|arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/llm-tracer-YOUR_AWS_ACCOUNT_ID-lambda-role|${LAMBDA_ROLE_ARN}|g" terraform.tfvars
         fi
-        echo "Created environments/prod/terraform.tfvars - please review and update alert_emails"
+        echo "Created environments/prod/terraform.tfvars - please review and update api_keys and alert_emails"
     fi
 
-# Build Lambda package
+# Build Lambda package; will overwrite existing package - even when you move from dev to prod.
 build-lambda:
     cd ../service && chmod +x scripts/build_lambda_package.sh && ./scripts/build_lambda_package.sh
 
@@ -217,8 +244,7 @@ setup-dev: build-lambda create-tfvars-dev init-dev
     @echo "Dev environment initialized!"
     @echo "Next steps:"
     @echo "  1. Review environments/dev/terraform.tfvars"
-    @echo "  2. Run: just plan-dev"
-    @echo "  3. Run: just apply-dev"
+    @echo "  2. Run: just apply-dev"
 
 # Full setup for prod (bootstrap must be done first)
 setup-prod: build-lambda create-tfvars-prod init-prod
@@ -226,5 +252,11 @@ setup-prod: build-lambda create-tfvars-prod init-prod
     @echo "Prod environment initialized!"
     @echo "Next steps:"
     @echo "  1. Review environments/prod/terraform.tfvars"
-    @echo "  2. Run: just plan-prod"
-    @echo "  3. Run: just apply-prod"
+    @echo "  2. Run: just apply-prod"
+
+# Clean up all local files generated by terraform for a clean slate restart during troubleshooting
+clean:
+    rm -f environments/*/backend.hcl
+    rm -rf environments/*/.terraform
+    rm -rf bootstrap/.terraform
+    rm -rf ../service/dist/
