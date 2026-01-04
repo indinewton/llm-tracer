@@ -37,11 +37,13 @@ COPY --chown=appuser:appuser src ./src/
 COPY --chown=appuser:appuser scripts ./scripts/
 
 # Environment variables
+# PYTHONPATH="/app" (not /app/src) so that `src` is treated as a package,
+# enabling relative imports like `from .models import ...` in src/server.py
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     VIRTUAL_ENV="/app/.venv" \
-    PYTHONPATH="/app/src"
+    PYTHONPATH="/app"
 
 USER appuser
 
@@ -51,4 +53,5 @@ EXPOSE 8001
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8001/health || exit 1
 
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8001"]
+# Run as src.server (module path) to enable relative imports within the src package
+CMD ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8001"]

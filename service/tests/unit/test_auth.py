@@ -1,6 +1,9 @@
 """Unit tests for authentication.
 
-Execute pytest <this file> from root dir where service/ is a module.
+Execute this file from service/ for async tests to pass
+
+# Note: pytest adds the parent directory (llm-tracer/) to sys.path during test collection,
+# making 'service' importable as a package. Run tests from service/ directory with: uv run pytest
 """
 
 import pytest

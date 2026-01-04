@@ -1,19 +1,26 @@
 """Integration tests for api endpoints with DynamoDB local.
 
-Execute pytest <this file> from root dir where service/ is a module.
+Execute this file from service/ for async tests to pass
+
+# Note: pytest adds the parent directory (llm-tracer/) to sys.path during test collection,
+# making 'service' importable as a package. Run tests from service/ directory with: uv run pytest
 """
 
 import pytest
 import os
 from fastapi.testclient import TestClient
 
-from service.src.server import app
+# Configure for DynamoDB Local - MUST be before importing app
+# because server.py initializes storage at module level
+os.environ["DYNAMODB_ENDPOINT_URL"] = "http://localhost:8000"
+os.environ["DYNAMODB_TRACES_TABLE"] = "llm-tracer-dev-traces"
+os.environ["DYNAMODB_SPANS_TABLE"] = "llm-tracer-dev-spans"
+os.environ["API_KEY_REQUIRED"] = "true"
+os.environ["API_KEYS"] = "project-test"
 
-# Configure for DynamoDB Local
-os.environ["DYNAMODB_ENDPOINT"] = "http://localhost:8000"
-os.environ["DYNAMODB_TRACES_TABLE"] = "test-traces"
-os.environ["DYNAMODB_SPANS_TABLE"] = "test-spans"
-os.environ["API_KEY"] = "project-test"
+# This must be imported after because server.py loads .env and it has defaults that DynamoDBStorage uses to initialize.
+# Which we don't want. We want it to use os.environ vars as defined above - especially the api_keys and table names.
+from service.src.server import app
 
 
 @pytest.fixture
@@ -65,9 +72,9 @@ def test_create_trace_requires_auth(client):
         "project_id": "test"
     }
 
-    # now we try to post without auth headers, this should retunr 403 error
+    # now we try to post without auth headers, this should return 401 error
     response = client.post("/api/traces", json=trace_data)
-    assert response.status_code == 403, "must return 403 error, anything else is a bug."
+    assert response.status_code == 401, "must return 401 error for missing API key, anything else is a bug."
 
 
 def test_create_span(client, auth_headers):
@@ -137,7 +144,7 @@ def test_get_trace_with_spans(client, auth_headers):
     # Add spans
     for i in range(3):
         client.post(
-            "/api/traces/{trace_id}/spans",
+            f"/api/traces/{trace_id}/spans",
             json={"name": f"Span id-{i}", "span_type": "llm"},
             headers=auth_headers,
         )

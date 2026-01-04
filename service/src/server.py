@@ -21,7 +21,7 @@ from .storage_dynamodb import DynamoDBStorage
 from .auth import get_api_key, extract_project_id
 from .rate_limit import RateLimiter
 
-load_dotenv(find_dotenv(usecwd=True),override=True)
+load_dotenv(find_dotenv(usecwd=True), override=False)
 
 # configure logging
 logging.basicConfig(level=logging.INFO)

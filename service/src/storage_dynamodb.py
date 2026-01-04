@@ -5,6 +5,7 @@ import time
 import logging
 import base64
 import json
+from decimal import Decimal
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime, timezone
 
@@ -15,6 +16,23 @@ from botocore.exceptions import ClientError
 from .models import Trace, Span, TraceQuery
 
 logger = logging.getLogger(__name__)
+
+
+def convert_decimals(obj: Any) -> Any:
+    """Convert DynamoDB Decimal types to native Python int/float.
+
+    DynamoDB returns numbers as Decimal objects which JSON cannot serialize.
+    So all items queried from DynamoDB need to be converted to native Python types using this function.
+    """
+    if isinstance(obj, Decimal):
+        if obj % 1 == 0:
+            return int(obj)
+        return float(obj)
+    elif isinstance(obj, dict):
+        return {k: convert_decimals(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_decimals(i) for i in obj]
+    return obj
 
 
 class DynamoDBStorage:
@@ -224,8 +242,8 @@ class DynamoDBStorage:
 
             # Remove TTL field from response (internal field)
             item.pop('ttl', None)
-            return item
-        
+            return convert_decimals(item)
+
         except ClientError as e:
             logger.error(f"Error getting trace {trace_id}: {e}")
             return None
@@ -286,10 +304,10 @@ class DynamoDBStorage:
                 next_cursor = base64.b64encode(json.dumps(last_key).encode()).decode()
             
             return {
-                "items": items,
+                "items": [convert_decimals(item) for item in items],
                 "next_cursor": next_cursor,
             }
-        
+
         except ClientError as e:
             logger.error(f"Error querying traces for project {query.project_id}: {e}")
             return {"items": [], "next_cursor": None}
@@ -360,23 +378,29 @@ class DynamoDBStorage:
             duration_ms = int((end_time - start_time).total_seconds() * 1000)
             
             # Build update expression
+            # Note: "output" is a DynamoDB reserved keyword, use #output alias
             update_expr = "SET end_time = :end_time, duration_ms = :duration_ms"
             expr_attr_values = {
                 ":end_time": end_time.isoformat(),
                 ":duration_ms": duration_ms,
             }
+            expr_attr_names = {}
 
             if output:
-                update_expr += ", output = :output"
+                update_expr += ", #output = :output"
                 expr_attr_values[":output"] = output
-
+                expr_attr_names["#output"] = "output"
 
             # Update trace
-            self.traces_table.update_item(
-                Key={"trace_id": trace_id},
-                UpdateExpression=update_expr,
-                ExpressionAttributeValues=expr_attr_values,
-            )
+            update_kwargs = {
+                "Key": {"trace_id": trace_id},
+                "UpdateExpression": update_expr,
+                "ExpressionAttributeValues": expr_attr_values,
+            }
+            if expr_attr_names:
+                update_kwargs["ExpressionAttributeNames"] = expr_attr_names
+
+            self.traces_table.update_item(**update_kwargs)
 
             logger.debug(f"Completed trace: {trace_id} (duration: {duration_ms} ms)")
             return True
@@ -478,8 +502,8 @@ class DynamoDBStorage:
             for item in items:
                 # Remove TTL field from response (internal field)
                 item.pop('ttl', None)
-            
-            return items
+
+            return [convert_decimals(item) for item in items]
 
         except ClientError as e:
             logger.error(f"Error getting spans for trace {trace_id}: {e}")

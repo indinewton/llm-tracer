@@ -3,13 +3,29 @@
 These tests verify end-to-end workflows using the FastAPI TestClient.
 They complement test_api_endpoints.py by testing realistic usage patterns.
 
-Execute pytest <this file> from root dir where service/ is a module.
+Execute this file from service/ for async tests to pass
+
+# Note: pytest adds the parent directory (llm-tracer/) to sys.path during test collection,
+# making 'service' importable as a package. Run tests from service/ directory with: uv run pytest
 """
 
 import pytest
 import time
+import os
 from fastapi.testclient import TestClient
 
+# Configure for DynamoDB Local / this is needed even when Using TestClient as:
+# TestClient -> FastAPI app -> DynamoDBStorage -> DynamoDB Local (localhost:8000)
+os.environ["DYNAMODB_ENDPOINT_URL"] = "http://localhost:8000"
+os.environ["DYNAMODB_TRACES_TABLE"] = "llm-tracer-dev-traces"
+os.environ["DYNAMODB_SPANS_TABLE"] = "llm-tracer-dev-spans"
+
+# Configure auth for tests
+os.environ["API_KEY_REQUIRED"] = "true"
+os.environ["API_KEYS"] = "project-test"
+
+# This must be imported after because server.py loads .env and it has defaults that DynamoDBStorage uses to initialize.
+# Which we don't want. We want it to use os.environ vars as defined above - especially the api_keys and table names.
 from service.src.server import app
 
 
@@ -35,7 +51,7 @@ class TestLLMCallWorkflow:
             "/api/traces",
             json={
                 "name": "LLM Call Workflow Test",
-                "project_id": "test",
+                "project_id": "test",  # this must match with auth_headers containing API_KEYS; which should be 'project-test'
                 "metadata": {"model": "gpt-4", "temperature": 0.7},
                 "tags": ["workflow-test", "llm"],
             },
@@ -121,6 +137,7 @@ class TestNestedSpansWorkflow:
             },
             headers=auth_headers,
         )
+        assert trace_response.status_code == 200
         trace_id = trace_response.json()["trace_id"]
 
         # Creating parent span (typically an agent orchestrator)

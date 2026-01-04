@@ -1,7 +1,9 @@
 """Unit tests for data models - focusing on custom validation logic.
 
-Execute this file from the root directory, such that service/ module can be found
-at 1st level of the search path.
+Execute this file from service/ for async tests to pass
+
+# Note: pytest adds the parent directory (llm-tracer/) to sys.path during test collection,
+# making 'service' importable as a package. Run tests from service/ directory with: uv run pytest
 """
 
 import pytest

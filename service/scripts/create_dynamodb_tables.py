@@ -3,10 +3,15 @@
 
 import argparse
 import sys
+import os
 import boto3
 from botocore.exceptions import ClientError
 
-from .dynamodb_schemas import (
+# Add scripts directory to path for direct execution;
+#  mainly for automation scripts using jutsfiles
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from dynamodb_schemas import (
     TRACES_SCHEMA,
     SPANS_SCHEMA,
     TTL_CONFIG,

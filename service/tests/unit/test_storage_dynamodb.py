@@ -1,6 +1,8 @@
 """Unit test for DynamoDB storage.
 
-Execute pytest <this file> from root dir where service/ is a module.
+Execute this file from service/ for async tests to pass
+# Note: pytest adds the parent directory (llm-tracer/) to sys.path during test collection,
+# making 'service' importable as a package. Run tests from service/ directory with: uv run pytest
 """
 
 import pytest
@@ -127,7 +129,7 @@ async def test_complete_span(dynamodb_tables, sample_span):
     result = await storage.complete_span(
         span_id=sample_span["span_id"],
         end_time=end_time,
-        output={"result": "success"},
+        output_data={"result": "success"},
         tokens_input=100,
         tokens_output=50,
     )

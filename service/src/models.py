@@ -90,18 +90,27 @@ def _truncate_string_values(
 
 
 def _drop_large_keys(data: Dict, max_size: int) -> Dict:
-    """Recursively remove largest keys until it fits."""
+    """Remove largest keys by VALUE size until dict fits within max_size."""
     result = data.copy()
+    dropped_keys = set()
 
     while len(json.dumps(result, default=str)) > max_size and result:
-        # Find largest key by serialized size
+        # Find key with largest VALUE that hasn't been dropped yet
+        droppable_keys = [k for k in result.keys() if k not in dropped_keys]
+        # All keys already dropped, but if we can't shrink further, just break
+        if not droppable_keys:
+            # Normally, dynamodb has gracious limits set, but someone can create a test case
+            # to hit this limit and if not forced to break - goes to infinite loop.
+            break
+
         largest_key = max(
-            result.keys(),
-            key=lambda k: len(json.dumps(k, default=str))
+            droppable_keys,
+            key=lambda k: len(json.dumps(result[k], default=str))
         )
         dropped_size = len(json.dumps(result[largest_key], default=str))
         result[largest_key] = f"[dropped: {dropped_size} bytes]"
-    
+        dropped_keys.add(largest_key)
+
     return result
         
 
@@ -118,6 +127,17 @@ def truncate_string(
 
     logger.warning(f"Truncating {field_name}: {len(value)} chars -> {max_length} chars")
     return value[:max_length - 50] + f"\n... [truncated, was {len(value)} chars]"
+
+
+def stringify_metadata(data: Optional[Dict]) -> Optional[Dict]:
+    """Convert metadata dict values to strings for DynamoDB compatibility.
+
+    DynamoDB does not support Python floats and other base types.
+    We convert all values to strings to ensure compatibility.
+    """
+    if not data:
+        return data
+    return {k: str(v) for k, v in data.items()}
 
 
 class TraceCreate(BaseModel):
@@ -141,9 +161,10 @@ class TraceCreate(BaseModel):
     @field_validator("metadata")
     @classmethod
     def truncate_metadata(cls, v: Optional[Dict]) -> Optional[Dict]:
-        """Truncate metadata to fit DynamoDB item size limit"""
+        """Stringify and truncate metadata for DynamoDB compatibility."""
         if not v:
             return v
+        v = stringify_metadata(v)
         return truncate_dict(v, MAX_METADATA_SIZE, "trace.metadata")
 
 
@@ -201,11 +222,12 @@ class Trace(BaseModel):
     @field_validator("metadata")
     @classmethod
     def truncate_metadata(cls, v: Optional[Dict]) -> Optional[Dict]:
-        """Truncate metadata to fit DynamoDB item size limit"""
+        """Stringify and truncate metadata for DynamoDB compatibility."""
         if not v:
             return v
+        v = stringify_metadata(v)
         return truncate_dict(v, MAX_METADATA_SIZE, "trace.metadata")
-    
+
     def to_dynamodb_item(self) -> Dict[str, Any]:
         """Convert to DynamoDB compatible Dictionary."""
         item = self.model_dump(exclude_none=True)
@@ -251,9 +273,10 @@ class SpanCreate(BaseModel):
     @field_validator("metadata")
     @classmethod
     def truncate_metadata(cls, v: Optional[Dict]) -> Optional[Dict]:
-        """Truncate metadata to fit DynamoDB item size limit"""
+        """Stringify and truncate metadata for DynamoDB compatibility."""
         if not v:
             return v
+        v = stringify_metadata(v)
         return truncate_dict(v, MAX_METADATA_SIZE, "span.metadata")
 
 
@@ -318,6 +341,15 @@ class Span(BaseModel):
     def truncate_error(cls, v: Optional[str]) -> Optional[str]:
         """Truncate error message"""
         return truncate_string(v, MAX_STRING_LENGTH, "span.error")
+
+    @field_validator("metadata")
+    @classmethod
+    def truncate_metadata(cls, v: Optional[Dict]) -> Optional[Dict]:
+        """Stringify and truncate metadata for DynamoDB compatibility."""
+        if not v:
+            return v
+        v = stringify_metadata(v)
+        return truncate_dict(v, MAX_METADATA_SIZE, "span.metadata")
 
     def to_dynamodb_item(self) -> Dict[str, Any]:
         """Convert to DynamoDB compatible Dictionary."""

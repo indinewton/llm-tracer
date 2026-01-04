@@ -1,5 +1,29 @@
-# List available commands
+# Justfile for LLM Tracer Service
+
+# Show essential commands
 help:
+    @echo "LLM Tracer - Essential Commands"
+    @echo "================================"
+    @echo ""
+    @echo "Getting Started:"
+    @echo "  just up          Start all services (DynamoDB + API)"
+    @echo "  just down        Stop all services"
+    @echo "  just logs        View API service logs"
+    @echo "  just status      Check service status"
+    @echo ""
+    @echo "Testing:"
+    @echo "  just health      Test health endpoint"
+    @echo "  just test-trace  Create a test trace"
+    @echo "  just traces      List all traces"
+    @echo ""
+    @echo "Database:"
+    @echo "  just reset-tables  Reset DynamoDB tables"
+    @echo "  just list-tables   List DynamoDB tables"
+    @echo ""
+    @echo "Run 'just --list' to see all available commands."
+
+# List all available commands
+list:
     @just --list
 
 # ==================
@@ -8,10 +32,13 @@ help:
 
 # Start all services (DynamoDB + API)
 up:
-    docker-compose up -d --build
-    @echo "Waiting for services to be healthy..."
-    @sleep 5
+    docker-compose up -d dynamodb
+    @echo "Waiting for DynamoDB to be ready..."
+    @sleep 3
     @just create-tables
+    docker-compose up -d service
+    @echo "Waiting for service to start..."
+    @sleep 2
     @echo "Services ready at http://localhost:8001"
 
 # Stop all services
@@ -46,9 +73,9 @@ clean:
 # DynamoDB Commands
 # ==================
 
-# Create DynamoDB tables
+# Create DynamoDB tables (uses local python, not container)
 create-tables:
-    docker-compose exec -T service python /app/scripts/create_dynamodb_tables.py --endpoint http://dynamodb:8000
+    uv run python scripts/create_dynamodb_tables.py --endpoint http://localhost:8000
 
 # List DynamoDB tables
 list-tables:

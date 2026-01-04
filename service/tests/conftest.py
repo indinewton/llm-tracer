@@ -24,8 +24,10 @@ def aws_credentials():
 
 
 @pytest.fixture
-def dynamodb_tables(aws_credentials):
+def dynamodb_tables(aws_credentials, monkeypatch):
     """Create mock DynamoDB tables"""
+    monkeypatch.delenv("DYNAMODB_ENDPOINT_URL", raising=False)
+
     with mock_aws():
         dynamodb = boto3.resource("dynamodb", region_name="eu-central-1")
 
