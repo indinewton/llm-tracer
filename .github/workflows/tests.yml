@@ -121,7 +121,7 @@ jobs:
                 cd client
                 uv sync
             
-            - name: Run unit tests
+            - name: Run client tests
               run: |
                 cd client
-                uv run pytest tests/unit/ -v
+                uv run pytest tests/ -v
