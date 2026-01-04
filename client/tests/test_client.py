@@ -11,7 +11,9 @@ Most client integrations tests are already covered by:
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
-from client.llm_tracer import (
+# client is an installable package - the moment `uv sync` is executed;
+# so it must be imported as `llm_tracer`
+from llm_tracer import (
     TracerClient,
     SyncTracerClient,
     TraceContext,
@@ -20,14 +22,19 @@ from client.llm_tracer import (
 
 
 class TestTracerClientInit:
-    """Test client initialization with various configurations"""
+    """Test client initialization with various configurations
+    
+    # patching the environment with clear=True clears out all environment variables
+    # so that TRACER_API_KEY is not read by default.
+    """
 
     def test_init_w_explicit_config(self):
         """Client accepts explicit config"""
-        client = TracerClient(
-            base_url="http://custom:8000",
-            api_key="project-myproject",
-        )
+        with patch.dict("os.environ", {}, clear=True):
+            client = TracerClient(
+                base_url="http://custom:8000",
+                api_key="project-myproject",
+            )
         
         assert client.base_url == "http://custom:8000"
         assert client.api_key == "project-myproject"
@@ -36,8 +43,6 @@ class TestTracerClientInit:
 
     def test_init_wo_apikey_disables_tracing(self):
         """Client disables tracing if no api_key is provided"""
-        # patching the environment with clear=True clears out all environment variables
-        # so that TRACER_API_KEY is not read by default.
         with patch.dict("os.environ", {}, clear=True):
             client = TracerClient(base_url="http://localhost:8001")
         
@@ -53,7 +58,8 @@ class TestTracerClientInit:
     
     def test_project_id_extracted_from_api_key(self):
         """Check that project ID is auto-extracted from api_key format"""
-        client = TracerClient(api_key="project-test")
+        with patch.dict("os.environ", {}, clear=True):
+            client = TracerClient(api_key="project-test")
         assert client.project_id == "test"
     
 
@@ -94,7 +100,7 @@ class TestAsyncContextManagers:
     @pytest.fixture
     def mock_httpx_client(self):
         """Mock httpx.AsyncClient for testing"""
-        with patch("client.llm_tracer.client.httpx.AsyncClient") as mock:
+        with patch("llm_tracer.client.httpx.AsyncClient") as mock:
             mock_instance = AsyncMock()
             mock.return_value = mock_instance
 
@@ -146,7 +152,7 @@ class TestAsyncContextManagers:
         client._client = mock_httpx_client
 
         async with client.trace("operation") as trace:
-            async with client.span("llm-call", "llm", model="gpt-4") as span:
+            async with trace.span("llm-call", "llm", model="gpt-4") as span:
                 span.set_output(
                     output_data={"response": "Hello"},
                     tokens_input=10,
@@ -175,7 +181,7 @@ class TestAsyncContextManagers:
 
         with pytest.raises(ValueError):
             async with client.trace("operation") as trace:
-                async with client.span("failing-op", "function") as span:
+                async with trace.span("failing-op", "function") as span:
                     raise ValueError("Purposefully meant to fail here.")
         
         # Span should still be completed (with error captured)
