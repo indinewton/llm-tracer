@@ -190,23 +190,30 @@ Features:
 
 ## Configuration
 
-### Service Environment Variables
+### Server-side Environment Variables
+
+These variables configure the LLM Tracer service (FastAPI backend).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `API_KEYS` | `project-dev` | Comma-separated valid API keys |
-| `API_KEY_REQUIRED` | `true` | Require authentication |
+| `API_KEYS` | `project-dev` | Comma-separated valid API keys the server accepts |
+| `API_KEY_REQUIRED` | `true` | Require API key authentication |
 | `RATE_LIMIT_RPM` | `60` | Requests per minute limit |
 | `CORS_ORIGINS` | `*` | Allowed CORS origins |
 | `LOG_LEVEL` | `INFO` | Logging verbosity |
+| `DYNAMODB_TRACES_TABLE` | - | DynamoDB table for traces |
+| `DYNAMODB_SPANS_TABLE` | - | DynamoDB table for spans |
 
-### Client Environment Variables
+### Client-side Environment Variables
+
+These variables configure the TracerClient (Python SDK) that sends traces to the server.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TRACER_URL` | `http://localhost:8001` | Service URL |
-| `TRACER_API_KEY` | - | Your API key |
-| `TRACING_ENABLED` | `true` | Enable/disable tracing |
+| `TRACER_URL` | `http://localhost:8001` | LLM Tracer service URL |
+| `TRACER_API_KEY` | - | API key to authenticate (must match one in server's `API_KEYS`) |
+| `TRACER_PROJECT_ID` | - | Project identifier (auto-derived from API key if not set) |
+| `TRACING_ENABLED` | `true` | Set to `false` to disable tracing |
 
 ## Development
 

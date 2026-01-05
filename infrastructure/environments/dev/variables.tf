@@ -52,7 +52,7 @@ variable "lambda_timeout_seconds" {
 }
 
 variable "api_keys" {
-  description = "Valid api keys (comma separated, format: project-{project_id})"
+  description = "Valid api keys (comma separated for different projects, format: project-{project_id}); supported by server"
   type        = string
   sensitive   = true
 }

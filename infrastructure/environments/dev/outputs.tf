@@ -30,9 +30,15 @@ output "configuration" {
     AWS Account ID: ${local.account_id}
 
     # Add to your .env file
+    # Server-side: Valid API keys (comma-separated)
+    API_KEYS=${nonsensitive(var.api_keys)}
+
+    # Client-side: Tracer client configuration
     TRACER_URL=${module.lambda.function_url}
-    TRACER_API_KEYS=${nonsensitive(var.api_keys)}
+    TRACER_API_KEY=${nonsensitive(element(split(",", var.api_keys), 0))}
     TRACER_PROJECT_ID=dev
+
+    # DynamoDB tables
     DYNAMODB_TRACES_TABLE=${module.dynamodb.traces_table_name}
     DYNAMODB_SPANS_TABLE=${module.dynamodb.spans_table_name}
     AWS_REGION=${var.aws_region}

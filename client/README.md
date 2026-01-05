@@ -72,7 +72,8 @@
 │                            CONFIGURATION                                    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│   Environment Variables:                                                    │
+│   Client-side Environment Variables:                                        │
+│   (These configure the TracerClient that sends traces to the server)        │
 │   ┌────────────────────┬─────────────────────────┬────────────────────────┐ │
 │   │ Variable           │ Default                 │ Description            │ │
 │   ├────────────────────┼─────────────────────────┼────────────────────────┤ │
@@ -81,6 +82,9 @@
 │   │ TRACER_PROJECT_ID  │ (from API key)          │ Project identifier     │ │
 │   │ TRACING_ENABLED    │ true                    │ Set "false" to disable │ │
 │   └────────────────────┴─────────────────────────┴────────────────────────┘ │
+│                                                                             │
+│   Note: TRACER_API_KEY must match one of the API_KEYS configured on the     │
+│   server side. The server validates incoming requests against its API_KEYS. │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
