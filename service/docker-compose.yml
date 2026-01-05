@@ -25,7 +25,7 @@ services:
       DYNAMODB_ENDPOINT_URL: http://dynamodb:8000
       DYNAMODB_TRACES_TABLE: ${DYNAMODB_TRACES_TABLE:-llm-tracer-dev-traces}
       DYNAMODB_SPANS_TABLE: ${DYNAMODB_SPANS_TABLE:-llm-tracer-dev-spans}
-      AWS_REGION: eu-central-1
+      AWS_REGION: ${AWS_REGION:-eu-central-1}
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       AWS_SESSION_TOKEN: ""

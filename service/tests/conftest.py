@@ -12,6 +12,9 @@ from service.scripts.dynamodb_schemas import (
     SPANS_SCHEMA,
 )
 
+# Default region for tests (can be overridden via AWS_REGION env var)
+TEST_AWS_REGION = os.getenv("AWS_REGION", "eu-central-1")
+
 
 @pytest.fixture(scope="session")
 def aws_credentials():
@@ -20,7 +23,7 @@ def aws_credentials():
     os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
     os.environ["AWS_SECURITY_TOKEN"] = "testing"
     os.environ["AWS_SESSION_TOKEN"] = "testing"
-    os.environ["AWS_DEFAULT_REGION"] = "eu-central-1"
+    os.environ["AWS_DEFAULT_REGION"] = TEST_AWS_REGION
 
 
 @pytest.fixture
@@ -29,7 +32,7 @@ def dynamodb_tables(aws_credentials, monkeypatch):
     monkeypatch.delenv("DYNAMODB_ENDPOINT_URL", raising=False)
 
     with mock_aws():
-        dynamodb = boto3.resource("dynamodb", region_name="eu-central-1")
+        dynamodb = boto3.resource("dynamodb", region_name=TEST_AWS_REGION)
 
         # Create traces table
         traces_table = dynamodb.create_table(

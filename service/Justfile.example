@@ -1,3 +1,6 @@
+# Configuration - override via environment variable if needed
+aws_region := env_var_or_default("AWS_REGION", "eu-central-1")
+
 # Default command - show help
 default:
     @just --list --unsorted
@@ -82,26 +85,26 @@ local-create-tables: _check-local-db
 local-list-tables: _check-local-db
     aws dynamodb list-tables \
         --endpoint-url http://localhost:8000 \
-        --region eu-central-1
+        --region {{aws_region}}
 
 # Scan traces table on local DynamoDB
 local-scan-traces: _check-local-db
     aws dynamodb scan \
         --table-name llm-tracer-dev-traces \
         --endpoint-url http://localhost:8000 \
-        --region eu-central-1
+        --region {{aws_region}}
 
 # Scan spans table on local DynamoDB
 local-scan-spans: _check-local-db
     aws dynamodb scan \
         --table-name llm-tracer-dev-spans \
         --endpoint-url http://localhost:8000 \
-        --region eu-central-1
+        --region {{aws_region}}
 
 # Delete and recreate tables (reset all data)
 local-reset-tables: _check-local-db
-    aws dynamodb delete-table --table-name llm-tracer-dev-traces --endpoint-url http://localhost:8000 --region eu-central-1 2>/dev/null || true
-    aws dynamodb delete-table --table-name llm-tracer-dev-spans --endpoint-url http://localhost:8000 --region eu-central-1 2>/dev/null || true
+    aws dynamodb delete-table --table-name llm-tracer-dev-traces --endpoint-url http://localhost:8000 --region {{aws_region}} 2>/dev/null || true
+    aws dynamodb delete-table --table-name llm-tracer-dev-spans --endpoint-url http://localhost:8000 --region {{aws_region}} 2>/dev/null || true
     @sleep 2
     @just local-create-tables
     @echo "Tables reset."
@@ -111,7 +114,7 @@ local-describe-traces: _check-local-db
     aws dynamodb describe-table \
         --table-name llm-tracer-dev-traces \
         --endpoint-url http://localhost:8000 \
-        --region eu-central-1 \
+        --region {{aws_region}} \
         | python -m json.tool
 
 # Describe spans table schema
@@ -119,16 +122,16 @@ local-describe-spans: _check-local-db
     aws dynamodb describe-table \
         --table-name llm-tracer-dev-spans \
         --endpoint-url http://localhost:8000 \
-        --region eu-central-1 \
+        --region {{aws_region}} \
         | python -m json.tool
 
 # Count items in both tables
 local-count: _check-local-db
     #!/usr/bin/env bash
     echo "Traces:"
-    aws dynamodb scan --table-name llm-tracer-dev-traces --endpoint-url http://localhost:8000 --region eu-central-1 --select COUNT | jq '.Count'
+    aws dynamodb scan --table-name llm-tracer-dev-traces --endpoint-url http://localhost:8000 --region {{aws_region}} --select COUNT | jq '.Count'
     echo "Spans:"
-    aws dynamodb scan --table-name llm-tracer-dev-spans --endpoint-url http://localhost:8000 --region eu-central-1 --select COUNT | jq '.Count'
+    aws dynamodb scan --table-name llm-tracer-dev-spans --endpoint-url http://localhost:8000 --region {{aws_region}} --select COUNT | jq '.Count'
 
 # ============================================================
 # AWS DYNAMODB MANAGEMENT (aws-*)
@@ -136,7 +139,6 @@ local-count: _check-local-db
 # ============================================================
 
 # Set default table names (override with: just aws-list-tables table_prefix=prod)
-aws_region := "eu-central-1"
 traces_table := "llm-tracer-dev-traces"
 spans_table := "llm-tracer-dev-spans"
 

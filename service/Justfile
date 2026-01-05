@@ -1,5 +1,8 @@
 # Justfile for LLM Tracer Service
 
+# Configuration - override via environment variable if needed
+aws_region := env_var_or_default("AWS_REGION", "eu-central-1")
+
 # Show essential commands
 help:
     @echo "LLM Tracer - Essential Commands"
@@ -79,20 +82,20 @@ create-tables:
 
 # List DynamoDB tables
 list-tables:
-    aws dynamodb list-tables --endpoint-url http://localhost:8000 --region eu-central-1
+    aws dynamodb list-tables --endpoint-url http://localhost:8000 --region {{aws_region}}
 
 # Scan traces table
 scan-traces:
-    aws dynamodb scan --table-name llm-tracer-dev-traces --endpoint-url http://localhost:8000 --region eu-central-1
+    aws dynamodb scan --table-name llm-tracer-dev-traces --endpoint-url http://localhost:8000 --region {{aws_region}}
 
 # Scan spans table
 scan-spans:
-    aws dynamodb scan --table-name llm-tracer-dev-spans --endpoint-url http://localhost:8000 --region eu-central-1
+    aws dynamodb scan --table-name llm-tracer-dev-spans --endpoint-url http://localhost:8000 --region {{aws_region}}
 
 # Delete and recreate tables (reset data)
 reset-tables:
-    aws dynamodb delete-table --table-name llm-tracer-dev-traces --endpoint-url http://localhost:8000 --region eu-central-1 2>/dev/null || true
-    aws dynamodb delete-table --table-name llm-tracer-dev-spans --endpoint-url http://localhost:8000 --region eu-central-1 2>/dev/null || true
+    aws dynamodb delete-table --table-name llm-tracer-dev-traces --endpoint-url http://localhost:8000 --region {{aws_region}} 2>/dev/null || true
+    aws dynamodb delete-table --table-name llm-tracer-dev-spans --endpoint-url http://localhost:8000 --region {{aws_region}} 2>/dev/null || true
     @sleep 2
     @just create-tables
     @echo "Tables reset."

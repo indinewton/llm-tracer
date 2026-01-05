@@ -19,9 +19,12 @@ from dynamodb_schemas import (
 )
 
 
+DEFAULT_AWS_REGION = os.getenv("AWS_REGION", "eu-central-1")
+
+
 def create_tables(
     endpoint_url=None,
-    region='eu-central-1',
+    region=None,
     traces_table='llm-tracer-dev-traces',
     spans_table='llm-tracer-dev-spans',
 ):
@@ -39,6 +42,7 @@ def create_tables(
     spans_table : str
         Name of spans table
     """
+    region = region or DEFAULT_AWS_REGION
     kwargs = {"region_name": region}
 
     if endpoint_url:
@@ -121,8 +125,8 @@ if __name__ == "__main__":
         help='DynamoDB endpoint URL (for local: http://localhost:8000)')
     parser.add_argument(
         '--region',
-        default='eu-central-1',
-        help='AWS region')
+        default=None,
+        help=f'AWS region (default: from AWS_REGION env var or eu-central-1)')
     parser.add_argument(
         '--traces-table',
         default='llm-tracer-dev-traces',
