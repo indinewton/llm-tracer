@@ -1,0 +1,68 @@
+name: Deployment Tests
+
+on:
+    workflow_dispatch:  # Manually trigger workflow
+        inputs:
+            environment:
+                description: 'Environment to test (dev/prod)'
+                required: true
+                default: 'dev'
+                type: choice
+                options:
+                    - dev
+                    - prod
+    workflow_call:  # Can also be called from deploy workflow
+        inputs:
+            environment:
+                required: true
+                type: string
+        secrets:
+            AWS_ACCESS_KEY_ID:
+                required: true
+            AWS_SECRET_ACCESS_KEY:
+                required: true
+            API_KEY:
+                required: true
+
+env:
+    AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+
+jobs:
+    deployment-tests:
+        runs-on: ubuntu-latest
+        environment: ${{ inputs.environment }}
+        
+        steps:
+            - uses: actions/checkout@v4
+            
+            - name: Set up python
+              uses: actions/setup-python@v5
+              with:
+                python-version: '3.12'
+                
+            - name: Install UV
+              uses: astral-sh/setup-uv@v4
+              
+            - name: Install dependencies
+              run: |
+                cd service
+                uv sync
+            
+            - name: Configure AWS credentials
+              uses: aws-actions/configure-aws-credentials@v4
+              with:
+                aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+                aws-region: ${{ env.AWS_REGION }}
+            
+            - name: Run deployment tests
+              env:
+                DEPLOYMENT_ENV: ${{ inputs.environment }}
+                API_BASE_URL: ${{ vars.API_BASE_URL }}
+                API_KEY: ${{ secrets.API_KEY }}
+                DYNAMODB_TRACES_TABLE: ${{ vars.DYNAMODB_TRACES_TABLE }}
+                DYNAMODB_SPANS_TABLE: ${{ vars.DYNAMODB_SPANS_TABLE }}
+              run: |
+                cd service
+                uv run pytest tests/deployment/ -v --tb=short
+        

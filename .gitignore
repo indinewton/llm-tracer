@@ -123,3 +123,6 @@ Thumbs.db
 
 # AI code setups
 CLAUDE.md
+
+# Errata/example scripts (local testing)
+_errata_*
