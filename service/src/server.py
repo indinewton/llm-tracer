@@ -194,6 +194,7 @@ async def complete_span(
             error=request.error,
             tokens_input=request.tokens_input,
             tokens_output=request.tokens_output,
+            cost_usd=request.cost_usd,
         )
 
         logger.info(f"Completed span: {span_id}")
@@ -273,11 +274,12 @@ async def get_traces(
         )
         result = await storage.get_traces(query)
 
+        # span_count and total_cost are now denormalized on the trace record
         return TraceListResponse(
             traces=result.get("items", []),
             next_cursor=result.get("next_cursor", None),
             has_more=result.get("next_cursor") is not None,
-            count = len(result.get("items", []))
+            count=len(result.get("items", []))
         )
     
     except HTTPException:

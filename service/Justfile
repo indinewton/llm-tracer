@@ -54,6 +54,12 @@ restart:
     @just down
     @just up
 
+# Stop all services, rebuild images and restart
+rebuild-service:
+    @just down
+    @docker-compose build --no-cache service
+    @just up
+
 # View service logs
 logs:
     docker-compose logs -f service
