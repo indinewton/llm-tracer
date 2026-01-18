@@ -187,6 +187,9 @@ class Trace(BaseModel):
     user_id: Optional[str] = None
     session_id: Optional[str] = None
     output: Optional[str] = None
+    # Denormalized fields for efficient querying (updated when spans are created/completed)
+    span_count: int = 0
+    total_cost: Optional[float] = None
 
     @field_validator("start_time", "end_time", mode="before")
     @classmethod
@@ -235,7 +238,10 @@ class Trace(BaseModel):
             item["start_time"] = item["start_time"].isoformat()
         if isinstance(item.get("end_time"), datetime):
             item["end_time"] = item["end_time"].isoformat()
-        
+        # Convert total_cost float to Decimal for DynamoDB
+        if item.get("total_cost") is not None:
+            item["total_cost"] = Decimal(str(item["total_cost"]))
+
         return item
 
 
@@ -352,7 +358,15 @@ class Span(BaseModel):
         return truncate_dict(v, MAX_METADATA_SIZE, "span.metadata")
 
     def to_dynamodb_item(self) -> Dict[str, Any]:
-        """Convert to DynamoDB compatible Dictionary."""
+        """Convert to DynamoDB compatible Dictionary.
+
+        - Converts datetime to ISO string
+        - Converts cost_usd float to Decimal
+        - Stringifies all values in input_data and output_data for compatibility
+        """
+        # Import here to avoid circular import
+        from .storage_dynamodb import stringify_for_dynamodb
+
         item = self.model_dump(exclude_none=True)
         if isinstance(item.get("start_time"), datetime):
             item["start_time"] = item["start_time"].isoformat()
@@ -360,7 +374,12 @@ class Span(BaseModel):
             item["end_time"] = item["end_time"].isoformat()
         if item.get("cost_usd") is not None:
             item["cost_usd"] = Decimal(str(item["cost_usd"]))
-        
+        # Stringify input_data and output_data to handle floats and other types
+        if item.get("input_data"):
+            item["input_data"] = stringify_for_dynamodb(item["input_data"])
+        if item.get("output_data"):
+            item["output_data"] = stringify_for_dynamodb(item["output_data"])
+
         return item
 
 

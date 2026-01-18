@@ -35,6 +35,33 @@ def convert_decimals(obj: Any) -> Any:
     return obj
 
 
+def stringify_for_dynamodb(obj: Any) -> Any:
+    """Recursively convert all values to DynamoDB-compatible types.
+
+    DynamoDB does not support Python floats and certain other types.
+    This function recursively stringifies all non-basic values in nested
+    dicts/lists to ensure compatibility.
+
+    - Dicts and lists: recursively processed
+    - Strings, ints, bools, None: kept as-is (DynamoDB supports these)
+    - Everything else (floats, Decimals, custom types): converted to string
+    """
+    if obj is None:
+        return obj
+    if isinstance(obj, bool):  # Must check before int since bool is subclass of int
+        return obj
+    if isinstance(obj, str):
+        return obj
+    if isinstance(obj, int):
+        return obj
+    if isinstance(obj, dict):
+        return {k: stringify_for_dynamodb(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [stringify_for_dynamodb(i) for i in obj]
+    # Everything else (float, Decimal, datetime, custom objects) -> string
+    return str(obj)
+
+
 class DynamoDBStorage:
     """DynamoDB storage backend for traces and spans"""
 
@@ -412,12 +439,12 @@ class DynamoDBStorage:
 
     async def save_span(self, span: Span) -> str:
         """Save a span to DynamoDB.
-        
+
         Parameters
         ----------
         span : Span
             The Span model object to save.
-        
+
         Returns
         -------
         str
@@ -430,13 +457,23 @@ class DynamoDBStorage:
 
         # Use model's serialisation method (handles Decimal conversion for cost_usd)
         span_dict = span.to_dynamodb_item()
-        
+
         # Add TTL for auto-deletion
         span_dict = self._add_ttl(span_dict)
 
         # put item in dynamodb
         self.spans_table.put_item(Item=span_dict)
-        
+
+        # Atomically increment span_count on the parent trace (denormalization)
+        try:
+            self.traces_table.update_item(
+                Key={"trace_id": span.trace_id},
+                UpdateExpression="ADD span_count :inc",
+                ExpressionAttributeValues={":inc": 1}
+            )
+        except Exception as e:
+            logger.warning(f"Failed to increment span_count for trace {span.trace_id}: {e}")
+
         logger.debug(f"Saved span: {span_dict['span_id']}")
         return span_dict['span_id']
 
@@ -518,9 +555,10 @@ class DynamoDBStorage:
         error: Optional[str] = None,
         tokens_input: Optional[int] = None,
         tokens_output: Optional[int] = None,
+        cost_usd: Optional[float] = None,
     ) -> bool:
         """Update a span.
-        
+
         Parameters
         ----------
         span_id : str
@@ -535,7 +573,9 @@ class DynamoDBStorage:
             The number of input tokens.
         tokens_output : Optional[int]
             The number of output tokens.
-        
+        cost_usd : Optional[float]
+            The cost of the span in USD.
+
         Returns
         -------
         bool
@@ -553,16 +593,16 @@ class DynamoDBStorage:
             if not span:
                 logger.error(f"Span {span_id} not found")
                 return False
-            
+
             # calculate duration
             start_time_str = span["start_time"]
             if start_time_str.endswith("Z"):
                 start_time_str = start_time_str.replace("Z", "+00:00")
-            
+
             start_time = datetime.fromisoformat(start_time_str)
             duration_ms = int((end_time - start_time).total_seconds() * 1000)
-            
-            
+
+
             # Build update expression
             update_parts = ["end_time = :end_time", "duration_ms = :duration_ms"]
             expr_attr_values = {
@@ -570,26 +610,31 @@ class DynamoDBStorage:
                 ":duration_ms": duration_ms,
             }
             expr_attr_names = {}
-            
+
             if output_data is not None:
+                # Stringify all values in output_data for DynamoDB compatibility
                 update_parts.append("output_data = :output_data")
-                expr_attr_values[":output_data"] = output_data
-            
+                expr_attr_values[":output_data"] = stringify_for_dynamodb(output_data)
+
             if error is not None:
                 update_parts.append("#error_field = :error")
                 expr_attr_values[":error"] = error
                 expr_attr_names["#error_field"] = "error"  # error is a reserved keyword in DynamoDB
-            
+
             if tokens_input is not None:
                 update_parts.append("tokens_input = :tokens_input")
                 expr_attr_values[":tokens_input"] = tokens_input
-            
+
             if tokens_output is not None:
                 update_parts.append("tokens_output = :tokens_output")
                 expr_attr_values[":tokens_output"] = tokens_output
-            
+
+            if cost_usd is not None:
+                update_parts.append("cost_usd = :cost_usd")
+                expr_attr_values[":cost_usd"] = Decimal(str(cost_usd))
+
             update_expr = "SET " + ", ".join(update_parts)
-            
+
             kwargs = {
                 "Key": {"span_id": span_id},
                 "UpdateExpression": update_expr,
@@ -600,9 +645,23 @@ class DynamoDBStorage:
                 kwargs["ExpressionAttributeNames"] = expr_attr_names
 
             self.spans_table.update_item(**kwargs)
+
+            # If cost was provided, atomically add it to trace's total_cost (denormalization)
+            if cost_usd is not None and cost_usd > 0:
+                trace_id = span.get("trace_id")
+                if trace_id:
+                    try:
+                        self.traces_table.update_item(
+                            Key={"trace_id": trace_id},
+                            UpdateExpression="ADD total_cost :cost",
+                            ExpressionAttributeValues={":cost": Decimal(str(cost_usd))}
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to update total_cost for trace {trace_id}: {e}")
+
             logger.debug(f"Completed span: {span_id} (duration: {duration_ms} ms)")
             return True
-        
+
         except ClientError as e:
             logger.error(f"Error completing span {span_id}: {e}")
             return False
