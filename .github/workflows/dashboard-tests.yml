@@ -1,0 +1,46 @@
+name: Dashboard Tests
+
+on:
+    push:
+        branches: [main, develop]
+        paths:
+            - 'dashboard/**'
+            - '.github/workflows/dashboard-tests.yml'
+    pull_request:
+        branches: [main]
+        paths:
+            - 'dashboard/**'
+            - '.github/workflows/dashboard-tests.yml'
+
+jobs:
+    dashboard-tests:
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                python-version: '3.12'
+
+            - name: Install UV
+              uses: astral-sh/setup-uv@v4
+
+            - name: Cache UV dependencies
+              uses: actions/cache@v4
+              with:
+                path: ~/.cache/uv
+                key: ${{ runner.os }}-uv-dashboard-${{ hashFiles('dashboard/uv.lock') }}
+                restore-keys: |
+                    ${{ runner.os }}-uv-dashboard-
+
+            - name: Install dependencies
+              run: |
+                cd dashboard
+                uv sync
+
+            - name: Run tests
+              run: |
+                cd dashboard
+                uv run pytest tests/ -v

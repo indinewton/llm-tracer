@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+
+# Python / UV
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.env
+
+# Reflex / Frontend
+.web/
+_reflex/
+node_modules/
+.next/
+
+# IDEs
+.vscode/
+.idea/
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# OS Generated
+.DS_Store
+Thumbs.db
