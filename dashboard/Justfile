@@ -1,0 +1,189 @@
+# Justfile for Reflex Dashboard
+
+# Default values
+image_name := "dashboard"
+container_name := "dashboard"
+dev_port_frontend := "3000"
+dev_port_backend := "8002"
+
+# Help on how to navigate through this Justfile for different tasks
+default:
+    @echo ""
+    @echo "╔═══════════════════════════════════════════════════════════════════╗"
+    @echo "║                    Reflex Dashboard - Justfile                    ║"
+    @echo "╚═══════════════════════════════════════════════════════════════════╝"
+    @echo ""
+    @echo "  Quick Start:"
+    @echo "  ─────────────────────────────────────────────────────────────────"
+    @echo ""
+    @echo "  → Developing/Customizing the dashboard itself?"
+    @echo "    just run-dev          # Interactive mode, hot reload, Ctrl+C to stop"
+    @echo ""
+    @echo "  → Building an LLM app with llm-tracer client?"
+    @echo "    just run-dev-detached # Runs dashboard in background"
+    @echo "    just logs-dev         # Check logs when needed"
+    @echo "    just stop-dev         # Stop when done"
+    @echo ""
+    @echo "  → View dashboard at: http://localhost:{{dev_port_frontend}}"
+    @echo ""
+    @echo "  ─────────────────────────────────────────────────────────────────"
+    @echo "  Run 'just --list' to see all available recipes"
+    @echo ""
+
+# ============
+# Development
+# ============
+
+# build development image
+build-dev:
+    docker build --target development -t {{image_name}}:dev .
+
+# Run Dev Interactive: Use this WHILE developing / customizing your reflex app itself.
+# You want to see hot reloads: ctrl+c to stop, modify, restart
+run-dev: build-dev
+    docker run -it --rm \
+        --name {{container_name}}-dev \
+        -p {{dev_port_frontend}}:3000 \
+        -p {{dev_port_backend}}:8002 \
+        -v $(pwd):/app \
+        -v /app/.venv \
+        -v /app/.web \
+        --env-file .env \
+        {{image_name}}:dev
+
+# Run Dev Detached: Use this WHILE developing your LLM application
+# You check logs of container or you verify traces in reflex app for your LLM app.
+run-dev-detached: build-dev
+    docker run -d \
+        --name {{container_name}}-dev \
+        -p {{dev_port_frontend}}:3000 \
+        -p {{dev_port_backend}}:8002 \
+        -v $(pwd):/app \
+        -v /app/.venv \
+        -v /app/.web \
+        --env-file .env \
+        {{image_name}}:dev
+
+# ============
+# Production
+# ============
+
+# Build prod image
+build-prod:
+    docker build --target production -t {{image_name}}:prod .
+
+# Run prod container
+run-prod: build-prod
+    docker run -d \
+        --name {{container_name}}-prod \
+        -p {{dev_port_frontend}}:3000 \
+        -p {{dev_port_backend}}:8002 \
+        --env-file .env \
+        --restart unless-stopped \
+        {{image_name}}:prod
+
+# ============
+# Container management
+# ============
+# Shorthand of Justfile: "-" prefix ignores error if command fails, especially useful for
+# stop (container might not be running), rm (container might not exist),
+# rmi (image might not exist), kill (container might already be dead)
+
+# Stop Dev container
+stop-dev: 
+    -docker stop {{container_name}}-dev
+
+# Stop Prod container
+stop-prod: 
+    -docker stop {{container_name}}-prod
+
+# Stop all dashboard containers
+stop-all:
+    -docker stop {{container_name}}-dev {{container_name}}-prod 2>/dev/null || true
+
+# Restart dev container
+restart-dev: stop-dev run-dev-detached
+
+# Restart prod container
+restart-prod: stop-prod run-prod
+
+# Kill container forcefully (dev)
+kill-dev:
+    -docker kill {{container_name}}-dev
+
+# Kill container forcefully (prod)
+kill-prod:
+    -docker kill {{container_name}}-prod
+
+# ============
+# Cleanup
+# ============
+
+# Remove stopped containers
+clean-containers:
+    -docker rm {{container_name}}-dev {{container_name}}-prod 2>/dev/null || true
+
+# Remove images
+clean-images:
+    -docker rmi {{image_name}}:dev {{image_name}}:prod 2>/dev/null || true
+
+# Full cleanup: Stop, remove containers, remove images
+clean-all: stop-all clean-containers clean-images
+    @echo "Cleaned all containers and images"
+
+# Nuclear option: clean everything + prune volumes and build cache
+nuke: clean-all
+    docker volume prune -f
+    docker builder prune -f
+    @echo "Nuked everything"
+
+# ============
+# Deployment (Rebuild cycle)
+# ============
+
+# rebuild and redeploy production (stops existing, rebuilds and starts fresh)
+deploy: stop-prod clean-containers
+    docker build --no-cache --target production -t {{image_name}}:prod .
+    docker run -d \
+        --name {{container_name}}-prod \
+        -p {{dev_port_frontend}}:3000 \
+        -p {{dev_port_backend}}:8002 \
+        --env-file .env \
+        --restart unless-stopped \
+        {{image_name}}:prod
+    @echo "Deployed fresh production container"
+
+# Quick redeploy (uses caches)
+redeploy: stop-prod clean-containers build-prod run-prod
+
+# ============
+# Logging and debugging
+# ============
+
+# Follow logs Dev container
+logs-dev:
+    docker logs {{container_name}}-dev
+
+# Follow logs Prod container
+logs-prod:
+    docker logs {{container_name}}-prod
+
+# Open shell in dev container
+shell:
+    docker exec -it {{container_name}}-dev /bin/bash
+
+# Show running containers
+ps:
+    docker ps --filter "name={{container_name}}"
+
+# -----------
+# Uncomment if needed:
+# -----------
+# logs-tail:
+#     docker logs --tail 100 {{container_name}}-dev
+#
+# logs-errors:
+#     docker logs {{container_name}}-dev 2>&1 | grep -iE "(error|exception|traceback|failed)"
+#
+# stats:
+#     docker stats --no-stream

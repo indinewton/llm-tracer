@@ -1,0 +1,23 @@
+# Reflex
+.web/
+.states/
+*.db
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Testing
+.pytest_cache/
+
+# Environment
+.env
+
+# IDE / Editor
+.claude/
+.vscode/
+.idea/
+
+# Build artifacts
+assets/external/
