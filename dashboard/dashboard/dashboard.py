@@ -70,13 +70,6 @@ def trace_page() -> rx.Component:
     )
 
 
-# Health check endpoint for Docker healthcheck
-@rx.api("/ping")
-def ping():
-    """Health check endpoint for container orchestration."""
-    return {"status": "ok"}
-
-
 # App configuration
 app = rx.App(
     theme=rx.theme(
@@ -90,5 +83,19 @@ app.add_page(
     trace_page,
     route="/trace/[trace_id]",
     title="Trace Detail",
-    on_load=DashboardState.load_current_trace,  # Alternative to on_mount, as reflex supports it at page level
+    on_load=DashboardState.load_current_trace,
 )
+
+
+# Health check endpoint for Docker healthcheck
+# Added via Starlette's underlying app after Reflex app is created
+from starlette.responses import JSONResponse
+from starlette.routing import Route
+
+
+def ping(request):
+    """Health check endpoint for container orchestration."""
+    return JSONResponse({"status": "ok"})
+
+
+app._api.routes.append(Route("/ping", ping, methods=["GET"]))
