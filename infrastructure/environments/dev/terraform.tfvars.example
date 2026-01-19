@@ -20,7 +20,8 @@ lambda_timeout_seconds = 30
 
 # API Keys (REQUIRED - comma-separated, format: project-{project_id})
 # Add more if you want, but the name should follow the format: project-{project_id}.
-api_keys = "project-dev,project-test"
+# For production-grade security, use: project-$(openssl rand -hex 16)
+api_keys = "project-myproject,project-another"
 
 # Default project key (used when auth is disabled)
 # default_project_key = "project-public"
