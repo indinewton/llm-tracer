@@ -218,7 +218,7 @@ def test_complete_span(client, auth_headers):
 
 def test_pagination_cursor(client, auth_headers):
     """Test pagination returns cursor for more results.
-    
+
     DynamoDB returns results in pages. If result is longer than the page limit, then
     query also returns a cursor that you can use to fetch next page.
     """
@@ -229,13 +229,147 @@ def test_pagination_cursor(client, auth_headers):
             json={"name": f"Pagination test trace {i}", "project_id": "test"},
             headers=auth_headers,
         )
-    
+
     # Query with small limits
     response = client.get("/api/traces?limit=2", headers=auth_headers)
     data = response.json()
-    
+
     msg = "As we are fetching 2 out of 5 traces, so: count==2 | has_more==True | next_cursor is not None."
-    
+
     assert data["has_more"] is True, msg
     assert data["count"] == 2, msg
     assert data["next_cursor"] is not None, msg
+
+
+# =============================================================================
+# API 500 Error Response Tests
+# =============================================================================
+# These tests verify that when internal errors occur, the API returns:
+# - HTTP 500 status code
+# - Valid JSON response (not a stack trace or HTML error page)
+# - A "detail" field with error information
+# =============================================================================
+
+def test_internal_error_returns_json_on_create_trace(client, auth_headers, monkeypatch):
+    """Verify 500 errors return structured JSON, not stack traces."""
+    from service.src import server
+
+    # Mock storage.save_trace to raise an unexpected exception
+    async def mock_save_trace(*args, **kwargs):
+        raise RuntimeError("Simulated database connection failure")
+
+    monkeypatch.setattr(server.storage, "save_trace", mock_save_trace)
+
+    response = client.post(
+        "/api/traces",
+        json={"name": "Test trace", "project_id": "test"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 500, "Internal errors should return 500"
+
+    # Response should be valid JSON with a detail field
+    data = response.json()
+    assert "detail" in data, "500 response must include 'detail' field"
+    assert isinstance(data["detail"], str), "'detail' should be a string"
+
+
+def test_internal_error_returns_json_on_create_span(client, auth_headers, monkeypatch):
+    """Verify 500 errors on span creation return structured JSON."""
+    from service.src import server
+
+    # First create a valid trace
+    trace_response = client.post(
+        "/api/traces",
+        json={"name": "Error test trace", "project_id": "test"},
+        headers=auth_headers,
+    )
+    trace_id = trace_response.json()["trace_id"]
+
+    # Mock storage.save_span to raise an unexpected exception
+    async def mock_save_span(*args, **kwargs):
+        raise Exception("Simulated span save failure")
+
+    monkeypatch.setattr(server.storage, "save_span", mock_save_span)
+
+    response = client.post(
+        f"/api/traces/{trace_id}/spans",
+        json={"name": "Test span", "span_type": "llm"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 500
+    data = response.json()
+    assert "detail" in data
+
+
+def test_internal_error_returns_json_on_get_traces(client, auth_headers, monkeypatch):
+    """Verify 500 errors on query return structured JSON."""
+    from service.src import server
+
+    # Mock storage.get_traces to raise an exception
+    async def mock_get_traces(*args, **kwargs):
+        raise RuntimeError("Simulated query failure")
+
+    monkeypatch.setattr(server.storage, "get_traces", mock_get_traces)
+
+    response = client.get("/api/traces", headers=auth_headers)
+
+    assert response.status_code == 500
+    data = response.json()
+    assert "detail" in data
+
+
+def test_internal_error_returns_json_on_get_trace(client, auth_headers, monkeypatch):
+    """Verify 500 errors on single trace fetch return structured JSON."""
+    from service.src import server
+
+    # Mock storage.get_trace to raise an exception
+    async def mock_get_trace(*args, **kwargs):
+        raise RuntimeError("Simulated fetch failure")
+
+    monkeypatch.setattr(server.storage, "get_trace", mock_get_trace)
+
+    response = client.get("/api/traces/some-trace-id", headers=auth_headers)
+
+    assert response.status_code == 500
+    data = response.json()
+    assert "detail" in data
+
+
+def test_internal_error_returns_json_on_complete_span(client, auth_headers, monkeypatch):
+    """Verify 500 errors on span completion return structured JSON."""
+    from service.src import server
+
+    # Mock storage.get_span to raise an exception
+    async def mock_get_span(*args, **kwargs):
+        raise RuntimeError("Simulated span lookup failure")
+
+    monkeypatch.setattr(server.storage, "get_span", mock_get_span)
+
+    response = client.patch(
+        "/api/spans/some-span-id/complete",
+        json={"output_data": {"result": "test"}},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 500
+    data = response.json()
+    assert "detail" in data
+
+
+def test_internal_error_returns_json_on_get_stats(client, auth_headers, monkeypatch):
+    """Verify 500 errors on stats endpoint return structured JSON."""
+    from service.src import server
+
+    # Mock storage.get_stats to raise an exception
+    async def mock_get_stats(*args, **kwargs):
+        raise RuntimeError("Simulated stats failure")
+
+    monkeypatch.setattr(server.storage, "get_stats", mock_get_stats)
+
+    response = client.get("/api/stats", headers=auth_headers)
+
+    assert response.status_code == 500
+    data = response.json()
+    assert "detail" in data
